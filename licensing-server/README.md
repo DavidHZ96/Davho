@@ -1,30 +1,129 @@
-# Store Manager Licensing API (stage 1)
+# Store Manager Licensing API — free development setup
 
-This separate FastAPI service currently provides only a health check. License generation, customer activation, and persistence are not implemented.
+This is the Stage 2 licensing backend. It keeps `GET /health`, the SQLAlchemy model, Alembic migrations, licensing endpoints, activation rules, and Ed25519 signatures. The backend is prepared for review separately from the existing live service. The Store Manager application, its database, routes, and installer have not been changed.
 
-## Run locally
+## Free hosting and database
+
+The Render web service remains on the **Free** plan. Its local disk is temporary, so license records must live in an external database. This setup uses Neon Postgres on its **Free** plan. Neon is a separate provider; the Render Blueprint does not create any database or other paid resource.
+
+The API reads its database URL from `DATABASE_URL`. The startup command runs `alembic upgrade head` against that database before starting FastAPI. This keeps the schema up to date after a restart or deployment. The external Neon database retains its data independently of the Render service's ephemeral filesystem.
+
+### Create a Neon Free project
+
+1. Open [Neon Console](https://console.neon.tech/) and sign in or create an account.
+2. Choose **New project**. Name it `store-manager-licensing`, select **Free**, and choose a region near the Render service. The existing Blueprint defaults to Render's Oregon region unless the service was created elsewhere.
+3. Create the project with its default Postgres database and branch. Neon provisions the database for you.
+4. In Neon, click **Connect**. Select the branch, database, and role you just created.
+5. Copy both connection strings from **Connect**. Use the pooled string for API traffic (leave pooling on) and the direct string for Alembic migrations (turn pooling off). The URLs should look like this, with your own credentials and host:
+
+   ```text
+   postgresql://USER:PASSWORD@HOST-pooler.neon.tech/DATABASE?sslmode=require&channel_binding=require
+   ```
+
+   For the direct URL, the hostname does not have `-pooler`. Keep SSL and any other query parameters in both strings. The app converts `postgresql://` or `postgres://` to SQLAlchemy's `postgresql+psycopg://` form and preserves the parameters. `DATABASE_URL_UNPOOLED` is used for Alembic; `DATABASE_URL` is used for normal API requests.
+
+6. Do not paste this URL into source code, README files, GitHub, or chat. It contains the database password.
+
+See Neon's [connection-string instructions](https://neon.com/docs/connect/connect-from-any-app) and [pooling guidance](https://neon.com/docs/connect/connection-pooling).
+
+### Add environment variables in Render
+
+After the implementation is approved and pushed, open the existing `store-manager-licensing-api` service in the Render Dashboard and go to **Environment**. Add or update these values:
+
+| Variable | Value |
+| --- | --- |
+| `APP_ENV` | `production` |
+| `DATABASE_URL` | The complete pooled Neon connection string |
+| `DATABASE_URL_UNPOOLED` | The complete direct Neon connection string |
+| `ADMIN_API_TOKEN` | An existing token, or a new one generated locally by the script and saved to the ignored `.env.local` file |
+| `ED25519_PRIVATE_KEY` | The existing key, or a new base64 key generated locally by the script and saved to the ignored `.env.local` file |
+| `SIGNING_KEY_ID` | Preserve the ID paired with the existing private key; use `licensing-ed25519-1` only for a new key pair |
+
+Run `python scripts/generate_secrets.py` from this folder only if a new admin or signing credential is needed. It writes only missing values to the ignored repository-root `.env.local` file, preserves existing values, and never prints secret values. Add missing values to Render's Environment page yourself; verify existing production values without replacing them. Keep private signing keys and database connection strings out of GitHub. The Blueprint marks manually managed credentials and `SIGNING_KEY_ID` with `sync: false` so a Blueprint sync does not overwrite them. For an already-created service, add only missing values in its Environment page.
+
+`DATABASE_URL` is **not** linked to a Render database. It is the manually configured Neon URL. No database password or private signing key is included in this repository.
+
+### Free-plan limits to keep in mind
+
+- Render Free web services sleep after 15 minutes without a request, then take about a minute to wake. They have no persistent disk. Render's current Hobby allowance includes 5 GB of outbound bandwidth; traffic beyond included limits can be billed if a payment method is attached. Without a payment method, Render says it suspends services instead of billing for overages. Keep database traffic and builds within the included allowance if you require zero charges. Render can also suspend a Free service that initiates unusually high public traffic. See [Render Free limits](https://render.com/docs/free) and [outbound bandwidth](https://render.com/docs/outbound-bandwidth).
+- Neon's current Free plan is $0 and includes 100 CU-hours per project per month, 1 GB storage per project (20 GB total per account), and 5 GB public network transfer per project. The database compute scales to zero after inactivity. If compute or transfer limits are reached, compute is suspended until the next period; writes fail if storage limits are exceeded. Neon says these limits do not delete existing data. Check the [current Neon plan limits](https://neon.com/docs/introduction/plans).
+- These services are suitable for initial development and testing, not a production availability guarantee. Check both dashboards' current plan, usage, and billing settings. Avoid upgrading Neon or adding paid Render services. If absolute no-charge behavior is required on Render, do not leave a payment method attached to a workspace that can incur usage overages.
+
+Render Free can make outbound internet requests to an external database. The service and Neon communicate over PostgreSQL TLS on port 5432; this is compatible with the existing `psycopg` 3 SQLAlchemy driver. Render counts service-initiated public traffic toward outbound usage, so use this for low-volume development/testing. Render's Free service restrictions and external-traffic limits are documented [here](https://render.com/docs/free).
+
+## Database and licensing behavior
+
+- The `licenses` table stores the license ID, shop/customer name, activation-code hash, registered device ID, license type, expiration, activation status, and timestamps.
+- Activation codes have 160 bits of randomness. The server stores only a SHA-256 hash. The authenticated administrator receives a new code once when creating a license and must deliver it securely.
+- The first successful activation binds a license to one device. Repeating activation on that device returns a signed license again; another device receives `409 device_mismatch`.
+- Annual licenses expire 365 days after activation unless an expiration date was supplied when creating the license. Lifetime licenses do not expire.
+- Activation returns a canonical JSON license payload signed with Ed25519. `/api/v1/public-key` returns the public key. Store Manager itself still needs a separate change to verify the signature and enforce its device and expiry claims locally.
+- Offline use does not require another API request after activation. A server-side revocation cannot reach an offline client until it checks in or receives a replacement license.
+
+## API routes
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Public | Existing service health check |
+| `GET` | `/api/v1/public-key` | Public | Ed25519 public key and key ID |
+| `POST` | `/api/v1/licenses/activate` | Activation code and device ID | Bind device and return signed license |
+| `POST` | `/api/v1/licenses/status` | License ID and device ID | Check online status |
+| `POST` | `/api/v1/admin/licenses` | Admin bearer token | Create license and show activation code once |
+| `GET` | `/api/v1/admin/licenses` | Admin bearer token | List licenses |
+| `GET` | `/api/v1/admin/licenses/{license_id}` | Admin bearer token | Read a license |
+| `POST` | `/api/v1/admin/licenses/{license_id}/issue` | Admin bearer token | Reissue signed license |
+| `POST` | `/api/v1/admin/licenses/{license_id}/revoke` | Admin bearer token | Revoke a license |
+
+Activation is limited to 10 requests per minute per client, status checks to 60, and admin requests to 30. The limiter is in-process and resets on restart; it is intended for this single-instance development setup.
+
+## Create an activation code
+
+After the approved backend is deployed and the Render secrets are configured, create a license using the authenticated admin endpoint. The returned `activation_code` is shown only in that response; the database contains only its hash.
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:ADMIN_API_TOKEN" }
+$body = '{"customer_name":"Example Shop","license_type":"annual"}'
+Invoke-RestMethod -Method Post `
+  -Uri 'https://store-manager-licensing-api.onrender.com/api/v1/admin/licenses' `
+  -Headers $headers -ContentType 'application/json' -Body $body
+```
+
+## Local setup and tests
 
 From this folder:
 
 ```powershell
-py -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests use temporary per-test SQLite databases; they do not read or write the Neon database. To run the API locally, use the development SQLite default, then start Uvicorn:
+
+```powershell
+alembic upgrade head
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-In another PowerShell window, check the endpoint:
+The application loads the repository-root `.env` file, or `.env.local` when `.env` is absent. The Neon CLI writes its pulled variables there. Alembic prefers `DATABASE_URL_UNPOOLED`; the API uses `DATABASE_URL`.
+
+For an isolated migration check, point Alembic at a temporary SQLite database:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
+$env:DATABASE_URL = "sqlite:///./migration-check.sqlite"
+alembic upgrade head
 ```
 
-Expected response:
+To check the PostgreSQL migration SQL without connecting to any database, use a dummy PostgreSQL URL and Alembic's offline mode:
 
-```json
-{"status":"ok"}
+```powershell
+$env:DATABASE_URL = "postgresql://test:test@localhost/test?sslmode=require"
+alembic upgrade head --sql
 ```
 
-## Render
+## Deployment and rollback
 
-The repository's root `render.yaml` points to this folder, installs these requirements, starts Uvicorn on Render's `$PORT`, and uses `/health` for health checks.
+The repository-root `render.yaml` describes the existing Free web service and `/health` check, leaves the database external, and has no `databases` resource. The service runs migrations at startup because Render Free web services do not support `preDeployCommand`. Before merging a reviewed change into the service's deployment branch, confirm the service points to this repository and that its required environment variables are already configured. Keep existing production credentials unchanged.
+
+Before deploying, record the last successful Render deploy and its Git commit. If the new release fails, use the existing service's **Deploys** page to roll back to that prior successful deploy. The migration only adds the licensing table and Alembic version record. If the application is rolled back, leave those database objects and any licensing records in place; do not run a destructive downgrade or delete the table as part of application rollback.

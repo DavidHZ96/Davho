@@ -1,8 +1,12 @@
-# Python and local environments
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Environment files and local configuration
 .env
@@ -24,8 +28,12 @@ config.local.py
 *.bak
 *.backup
 data/
-instance/
-backups/
+instance/*.sqlite3
+instance/*.bak
+instance/backups/
+
+# Local Stage 1 snapshot kept outside source control
+licensing-server-backup-*/
 
 # Secrets and private keys
 secrets/
@@ -43,3 +51,5 @@ session-secret
 *.keystore
 id_rsa*
 id_ed25519*
+.neon
+node_modules/
