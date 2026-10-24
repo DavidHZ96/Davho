@@ -20,5 +20,5 @@ services:
       - key: ED25519_PRIVATE_KEY
         sync: false
       - key: SIGNING_KEY_ID
-        value: licensing-ed25519-1
+        sync: false
 
