@@ -5,5 +5,20 @@ services:
     plan: free
     rootDir: licensing-server
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # Free web services do not support pre-deploy commands, so apply migrations at startup.
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: ADMIN_API_TOKEN
+        sync: false
+      - key: ED25519_PRIVATE_KEY
+        sync: false
+      - key: SIGNING_KEY_ID
+        value: licensing-ed25519-1
+

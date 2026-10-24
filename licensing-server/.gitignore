@@ -1,0 +1,48 @@
+# Python and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment files and local configuration
+.env
+.env.*
+!.env.example
+local_settings.py
+config.local.py
+
+# Customer or application databases and exports
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite*
+*.db*
+*.mdb
+*.sql
+*.dump
+*.csv
+*.bak
+*.backup
+data/
+instance/
+backups/
+
+# Secrets and private keys
+secrets/
+secret/
+session-secret
+*.secret
+*.token
+*.pem
+*.key
+*.p12
+*.pfx
+*.ppk
+*.p8
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*

@@ -1,9 +1,3 @@
-from fastapi import FastAPI
+from app.main import create_app
 
-
-app = FastAPI(title="Store Manager Licensing API", version="0.1.0")
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+app = create_app()
