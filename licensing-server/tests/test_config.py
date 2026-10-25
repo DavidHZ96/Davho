@@ -26,6 +26,8 @@ def test_migrations_prefer_neon_direct_database_url(monkeypatch) -> None:
 
 def test_application_settings_keep_neon_pooled_database_url(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
+    for name in ("ADMIN_API_TOKEN", "DASHBOARD_PASSWORD", "ED25519_PRIVATE_KEY"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql://ep-example-pooler.us-east-2.aws.neon.tech/app",
@@ -45,6 +47,8 @@ def test_settings_hash_dashboard_password_and_do_not_retain_plaintext(monkeypatc
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./ignored-test.sqlite")
     monkeypatch.setenv("DASHBOARD_PASSWORD", password)
+    monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
+    monkeypatch.delenv("ED25519_PRIVATE_KEY", raising=False)
 
     settings = Settings.from_env()
 
