@@ -36,6 +36,7 @@ After the implementation is approved and pushed, open the existing `store-manage
 | `DATABASE_URL` | The complete pooled Neon connection string |
 | `DATABASE_URL_UNPOOLED` | The complete direct Neon connection string |
 | `ADMIN_API_TOKEN` | An existing token, or a new one generated locally by the script and saved to the ignored `.env.local` file |
+| `DASHBOARD_PASSWORD` | A separate, unique dashboard password with at least 16 characters; do not reuse `ADMIN_API_TOKEN` |
 | `ED25519_PRIVATE_KEY` | The existing key, or a new base64 key generated locally by the script and saved to the ignored `.env.local` file |
 | `SIGNING_KEY_ID` | Preserve the ID paired with the existing private key; use `licensing-ed25519-1` only for a new key pair |
 
@@ -127,3 +128,18 @@ alembic upgrade head --sql
 The repository-root `render.yaml` describes the existing Free web service and `/health` check, leaves the database external, and has no `databases` resource. The service runs migrations at startup because Render Free web services do not support `preDeployCommand`. Before merging a reviewed change into the service's deployment branch, confirm the service points to this repository and that its required environment variables are already configured. Keep existing production credentials unchanged.
 
 Before deploying, record the last successful Render deploy and its Git commit. If the new release fails, use the existing service's **Deploys** page to roll back to that prior successful deploy. The migration only adds the licensing table and Alembic version record. If the application is rolled back, leave those database objects and any licensing records in place; do not run a destructive downgrade or delete the table as part of application rollback.
+
+## Private Persian administrator dashboard
+
+The FastAPI server also provides a Persian, right-to-left license dashboard at `/admin`. After this code is reviewed and deployed to the existing Render service, open:
+
+```text
+https://store-manager-licensing-api.onrender.com/admin
+```
+
+Sign in with the separate `DASHBOARD_PASSWORD` secret. It is not the API credential: `ADMIN_API_TOKEN` continues to authenticate only `/api/v1/admin/...` requests, and neither credential can substitute for the other. The browser submits the dashboard password in the HTTPS login form body; it is not included in page HTML, JavaScript, URLs, or browser storage. At startup, the server derives a random-salt scrypt verifier and retains only that verifier in application settings. Set a long, unique password in the existing Render service's **Environment** page; a password manager generated value of 32 or more random characters is recommended. The raw password is supplied through Render's secret environment variable and is not saved in application settings or a browser session.
+
+The dashboard can create lifetime or annual licenses, show an activation code once with a copy button, search and filter the license list, and revoke a license after browser confirmation. Each license remains limited to one computer by the existing activation logic. Save the activation code securely before leaving or refreshing the creation result; it is not stored in plaintext in the database and cannot be recovered from the dashboard later.
+
+Dashboard sessions use `HttpOnly`, `Secure` in production, and `SameSite=Strict` cookies, CSRF tokens on form submissions, a 30-minute expiry, and a five-attempt-per-minute login limit. Sessions and rate-limit state are held in the single FastAPI process memory, so a Render restart invalidates active sessions and requires a fresh login. Add `DASHBOARD_PASSWORD` to the existing Render service before deploying this change; no database migration or schema change is required. The API's bearer-authenticated admin endpoints continue to use `ADMIN_API_TOKEN` as before.
+

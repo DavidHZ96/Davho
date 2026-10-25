@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
+from app.dashboard import install_admin_dashboard
 from app.database import Base, get_db, make_engine
 from app.models import License
 from app.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
@@ -331,4 +332,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.refresh(record)
         return _license_output(record)
 
+    install_admin_dashboard(app)
     return app
+
