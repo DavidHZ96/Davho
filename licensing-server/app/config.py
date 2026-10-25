@@ -3,10 +3,12 @@ from __future__ import annotations
 import base64
 import binascii
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from app.passwords import hash_dashboard_password
 
 
 def _load_project_env() -> None:
@@ -45,13 +47,19 @@ def decode_private_key(value: str) -> bytes:
 class Settings:
     app_env: str = "development"
     database_url: str = "sqlite:///./licensing_dev.db"
-    admin_api_token: str | None = None
-    ed25519_private_key: str | None = None
+    admin_api_token: str | None = field(default=None, repr=False)
+    ed25519_private_key: str | None = field(default=None, repr=False)
     signing_key_id: str = "dev-ephemeral"
+    dashboard_password_hash: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls) -> "Settings":
         app_env = os.getenv("APP_ENV", "development").strip().lower()
+        dashboard_password = os.getenv("DASHBOARD_PASSWORD") or None
+        if app_env == "production" and (
+            dashboard_password is None or len(dashboard_password) < 16
+        ):
+            raise RuntimeError("Production requires DASHBOARD_PASSWORD with at least 16 characters")
         default_database = "" if app_env == "production" else "sqlite:///./licensing_dev.db"
         settings = cls(
             app_env=app_env,
@@ -59,6 +67,9 @@ class Settings:
             admin_api_token=os.getenv("ADMIN_API_TOKEN") or None,
             ed25519_private_key=os.getenv("ED25519_PRIVATE_KEY") or None,
             signing_key_id=os.getenv("SIGNING_KEY_ID", "primary").strip() or "primary",
+            dashboard_password_hash=(
+                hash_dashboard_password(dashboard_password) if dashboard_password else None
+            ),
         )
         settings.validate()
         return settings
@@ -73,6 +84,8 @@ class Settings:
         if not self.ed25519_private_key:
             raise RuntimeError("Production requires ED25519_PRIVATE_KEY")
         decode_private_key(self.ed25519_private_key)
+        if not self.dashboard_password_hash:
+            raise RuntimeError("Production requires DASHBOARD_PASSWORD")
 
 
 def database_url_from_env() -> str:
@@ -82,3 +95,4 @@ def database_url_from_env() -> str:
         or os.getenv("DATABASE_URL")
         or "sqlite:///./licensing_dev.db"
     )
+
