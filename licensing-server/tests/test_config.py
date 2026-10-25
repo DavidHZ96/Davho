@@ -47,8 +47,10 @@ def test_settings_hash_dashboard_password_and_do_not_retain_plaintext(monkeypatc
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./ignored-test.sqlite")
     monkeypatch.setenv("DASHBOARD_PASSWORD", password)
-    monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
-    monkeypatch.delenv("ED25519_PRIVATE_KEY", raising=False)
+    api_token = secrets.token_urlsafe(48)
+    private_key = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+    monkeypatch.setenv("ADMIN_API_TOKEN", api_token)
+    monkeypatch.setenv("ED25519_PRIVATE_KEY", private_key)
 
     settings = Settings.from_env()
 
@@ -57,6 +59,9 @@ def test_settings_hash_dashboard_password_and_do_not_retain_plaintext(monkeypatc
     assert verify_dashboard_password(password, settings.dashboard_password_hash)
     assert not verify_dashboard_password("wrong-password", settings.dashboard_password_hash)
     assert not hasattr(settings, "dashboard_password")
+    assert api_token not in repr(settings)
+    assert private_key not in repr(settings)
+    assert settings.dashboard_password_hash not in repr(settings)
 
 
 def test_production_rejects_missing_or_short_dashboard_password(monkeypatch) -> None:

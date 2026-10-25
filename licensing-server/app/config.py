@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -47,10 +47,10 @@ def decode_private_key(value: str) -> bytes:
 class Settings:
     app_env: str = "development"
     database_url: str = "sqlite:///./licensing_dev.db"
-    admin_api_token: str | None = None
-    ed25519_private_key: str | None = None
+    admin_api_token: str | None = field(default=None, repr=False)
+    ed25519_private_key: str | None = field(default=None, repr=False)
     signing_key_id: str = "dev-ephemeral"
-    dashboard_password_hash: str | None = None
+    dashboard_password_hash: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls) -> "Settings":
